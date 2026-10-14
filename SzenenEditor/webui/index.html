@@ -78,6 +78,7 @@ main { max-width:560px; margin:0 auto; padding:18px 16px 28px; }
 .chip { border:1px solid var(--line); background:var(--card); color:var(--txt); border-radius:999px;
   padding:8px 16px; font-size:14px; white-space:nowrap; cursor:pointer; box-shadow:var(--shadow); }
 .chip.on { background:var(--acc); border-color:var(--acc); color:var(--acc-ink); font-weight:700; }
+[hidden] { display:none !important; }
 
 /* ---- Ziel-Karte ---- */
 .card { background:var(--card); border:1px solid var(--line); border-radius:14px;
@@ -139,6 +140,8 @@ button.act.p:hover { background:var(--acc-hover); border-color:var(--acc-hover);
 <main>
   <div class="section-title">Szene wählen</div>
   <div class="chips" id="chips"></div>
+  <div class="section-title" id="chips2Title" hidden>Raum wählen</div>
+  <div class="chips" id="chips2" hidden></div>
   <div class="card" id="targets"></div>
   <div class="btns">
     <button class="act" id="test">Testen</button>
@@ -177,17 +180,39 @@ async function load(){
   $('title').textContent = cfg.title;
   document.title = 'FACE · ' + cfg.title;
   const names = Object.keys(cfg.scenes);
-  $('chips').innerHTML = names.map(n =>
-    `<div class="chip" data-s="${n}">${n}</div>`).join('');
-  document.querySelectorAll('.chip').forEach(c =>
-    c.onclick = () => select(c.dataset.s));
+  // Szenennamen "Szene · Raum" → zwei Reihen (Szene, Raum); sonst eine Reihe mit allen Namen
+  split = names.length > 0 && names.every(n => n.includes(SEP));
+  if (split) {
+    const uniq = a => [...new Set(a)];
+    chipRow('chips', uniq(names.map(n => part(n)[0])), g => {
+      const room = part(scene)[1];
+      select(names.includes(g + SEP + room) ? g + SEP + room : names.find(n => part(n)[0] === g));
+    });
+    chipRow('chips2', uniq(names.map(n => part(n)[1])), r => {
+      const g = part(scene)[0];
+      select(names.includes(g + SEP + r) ? g + SEP + r : names.find(n => part(n)[1] === r));
+    });
+    $('chips2').hidden = $('chips2Title').hidden = false;
+  } else {
+    chipRow('chips', names, select);
+  }
   if (names.length) select(names[0]);
+}
+
+const SEP = ' · ';
+let split = false;
+const part = n => { const i = n.indexOf(SEP); return [n.slice(0, i), n.slice(i + SEP.length)]; };
+
+function chipRow(id, keys, onPick){
+  $(id).innerHTML = keys.map(k => `<div class="chip" data-s="${k}">${k}</div>`).join('');
+  $(id).querySelectorAll('.chip').forEach(c => c.onclick = () => onPick(c.dataset.s));
 }
 
 function select(name){
   scene = name;
-  document.querySelectorAll('.chip').forEach(c =>
-    c.classList.toggle('on', c.dataset.s === name));
+  const [g, r] = split ? part(name) : [name, null];
+  $('chips').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.s === g));
+  $('chips2').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.s === r));
   render();
 }
 
