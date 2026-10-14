@@ -20,6 +20,12 @@ class SzenenEditor extends IPSModule
         // Szenen: [{ "Scene": "Kochen", "PlanID": 55725 }, ...] — PlanID ist ein Ablaufplan (ScriptType 1)
         $this->RegisterPropertyString('Plans', '[]');
 
+        // Optional: Raumteilung für Szenen "Szene · Teil" (Trennwände als Grundriss, gekoppelte Räume ausblenden).
+        // { "part": "Trennwände", "openValue": true,
+        //   "rooms": [{ "name": "Raum 1", "col": 0, "row": 0 }, ...],            Reihenfolge = Führungsrang
+        //   "walls": [{ "variableId": 12345, "rooms": ["Raum 1", "Raum 2"] }, ...] }
+        $this->RegisterPropertyString('Partitions', '');
+
         // Vom Kunden aus der Szene genommene Aktionen: { "<Szene>": { "<varID>": <action-json> } }
         $this->RegisterAttributeString('DisabledActions', '{}');
     }
@@ -358,7 +364,9 @@ class SzenenEditor extends IPSModule
         }
         $title = $topID !== $this->InstanceID ? IPS_GetName($topID) : IPS_GetName($this->InstanceID);
 
-        return ['title' => $title, 'scenes' => $scenes];
+        $partitions = json_decode($this->ReadPropertyString('Partitions'), true);
+
+        return ['title' => $title, 'scenes' => $scenes, 'partitions' => is_array($partitions) ? $partitions : null];
     }
 
     /** Ein Ziel fürs Frontend beschreiben (Label, Typ, Profilgrenzen). */

@@ -33,6 +33,13 @@
                     "edit": { "type": "SelectScript" }
                 }
             ]
+        },
+        {
+            "type": "ValidationTextBox",
+            "name": "Partitions",
+            "caption": "Raumteilung (optional, JSON – siehe README)",
+            "multiline": true,
+            "width": "100%"
         }
     ],
     "actions": [

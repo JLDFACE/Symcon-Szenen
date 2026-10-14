@@ -79,6 +79,32 @@ main { max-width:560px; margin:0 auto; padding:18px 16px 28px; }
   padding:8px 16px; font-size:14px; white-space:nowrap; cursor:pointer; box-shadow:var(--shadow); }
 .chip.on { background:var(--acc); border-color:var(--acc); color:var(--acc-ink); font-weight:700; }
 [hidden] { display:none !important; }
+.scope { font-size:13px; color:var(--txt); margin:0 0 10px; }
+.row.dis { opacity:.45; }
+
+/* ---- Raumteilung: Trennwände als Grundriss ---- */
+.plan { display:grid; aspect-ratio:1.3; margin:4px 0 2px; }
+.planwrap.off .plan { opacity:.4; pointer-events:none; }
+.pr { border:1.5px solid var(--line); border-radius:12px; background:var(--card2);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; min-height:90px; }
+.pr b { font-size:16px; color:var(--fg); }
+.pr small { font-size:11px; color:var(--mut); text-transform:uppercase; letter-spacing:.08em; }
+.pr.cpl { border-color:var(--gc); background:var(--gb); }
+.pr.cpl small { color:var(--gc); }
+.g0 { --gc:#cc0000; --gb:rgba(204,0,0,.09); }
+.g1 { --gc:#2563eb; --gb:rgba(37,99,235,.10); }
+.g2 { --gc:#16a34a; --gb:rgba(22,163,74,.10); }
+.g3 { --gc:#d97706; --gb:rgba(217,119,6,.11); }
+.pw { border:none; background:transparent; padding:0; margin:0; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; -webkit-tap-highlight-color:transparent; }
+.pw span { display:block; border-radius:4px; transition:background .15s, border-color .15s; }
+.pw.v span { width:9px; height:80%; }
+.pw.h span { height:9px; width:80%; }
+.pw.closed span { background:var(--fg); }
+.pw.closed:hover span { background:var(--acc); }
+.pw.open { background:var(--gb); }
+.pw.open span { border:2px dashed var(--gc); background:transparent; }
+.plan-hint { font-size:12px; color:var(--mut); padding:8px 0 12px; line-height:1.4; }
 
 /* ---- Ziel-Karte ---- */
 .card { background:var(--card); border:1px solid var(--line); border-radius:14px;
@@ -142,6 +168,7 @@ button.act.p:hover { background:var(--acc-hover); border-color:var(--acc-hover);
   <div class="chips" id="chips"></div>
   <div class="section-title" id="chips2Title" hidden>Raum wählen</div>
   <div class="chips" id="chips2" hidden></div>
+  <div class="scope" id="scope" hidden></div>
   <div class="card" id="targets"></div>
   <div class="btns">
     <button class="act" id="test">Testen</button>
@@ -165,6 +192,8 @@ const api = p => location.pathname.replace(/\/$/,'') + '/api/' + p;
 
 const toHex = v => '#' + (v >>> 0).toString(16).padStart(6,'0').slice(-6);
 const fromHex = h => parseInt(h.slice(1), 16);
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+const uniq = a => [...new Set(a)];
 
 $('cpYear').textContent = new Date().getFullYear();
 $('themeBtn').onclick = () => {
@@ -175,80 +204,188 @@ $('themeBtn').onclick = () => {
   localStorage.setItem('fse-theme', next);
 };
 
+// Szenennamen "Szene · Teil" → zwei Reihen (Szene, Teil); sonst eine Reihe mit allen Namen.
+// Optional cfg.partitions (Raumteilung): Teil "Trennwände" als Grundriss, gekoppelte Räume ausgeblendet.
+const SEP = ' · ';
+let split = false, names = [], P = null;
+const part = n => { const i = n.indexOf(SEP); return [n.slice(0, i), n.slice(i + SEP.length)]; };
+
 async function load(){
   cfg = await (await fetch(api('config'))).json();
   $('title').textContent = cfg.title;
   document.title = 'FACE · ' + cfg.title;
-  const names = Object.keys(cfg.scenes);
-  // Szenennamen "Szene · Raum" → zwei Reihen (Szene, Raum); sonst eine Reihe mit allen Namen
+  names = Object.keys(cfg.scenes);
   split = names.length > 0 && names.every(n => n.includes(SEP));
+  P = split && cfg.partitions && cfg.partitions.part ? cfg.partitions : null;
   if (split) {
-    const uniq = a => [...new Set(a)];
-    chipRow('chips', uniq(names.map(n => part(n)[0])), g => {
-      const room = part(scene)[1];
-      select(names.includes(g + SEP + room) ? g + SEP + room : names.find(n => part(n)[0] === g));
-    });
-    chipRow('chips2', uniq(names.map(n => part(n)[1])), r => {
-      const g = part(scene)[0];
-      select(names.includes(g + SEP + r) ? g + SEP + r : names.find(n => part(n)[1] === r));
-    });
+    chipRow('chips', uniq(names.map(n => part(n)[0])).map(g => ({key: g, label: g})), g => pick(g, part(scene)[1]));
     $('chips2').hidden = $('chips2Title').hidden = false;
+    if (P) $('chips2Title').textContent = P.part + ' und Räume';
+    if (names.length) pick(part(names[0])[0], P ? P.part : part(names[0])[1]);
   } else {
-    chipRow('chips', names, select);
+    chipRow('chips', names.map(n => ({key: n, label: n})), select);
+    if (names.length) select(names[0]);
   }
-  if (names.length) select(names[0]);
 }
 
-const SEP = ' · ';
-let split = false;
-const part = n => { const i = n.indexOf(SEP); return [n.slice(0, i), n.slice(i + SEP.length)]; };
-
-function chipRow(id, keys, onPick){
-  $(id).innerHTML = keys.map(k => `<div class="chip" data-s="${k}">${k}</div>`).join('');
+function chipRow(id, items, onPick){
+  $(id).innerHTML = items.map(it => `<div class="chip" data-s="${esc(it.key)}">${esc(it.label)}</div>`).join('');
   $(id).querySelectorAll('.chip').forEach(c => c.onclick = () => onPick(c.dataset.s));
+}
+
+// ---- Raumteilung ----
+const openVal = () => (P.openValue === undefined ? true : P.openValue);
+const isWall = t => !!P && P.walls.some(w => w.variableId === t.variableId);
+const joinNames = ms => {
+  const sp = ms[0].lastIndexOf(' ') + 1, pre = ms[0].slice(0, sp);
+  return pre && ms.every(m => m.startsWith(pre)) ? pre + ms.map(m => m.slice(sp)).join(' + ') : ms.join(' + ');
+};
+// Gruppen aus den Wänden der Szene g (Stand im Editor). Führend = erster Raum der Liste (wie die Raumteilung).
+function groupsFor(g){
+  const rooms = P.rooms.map(r => r.name);
+  const parent = Object.fromEntries(rooms.map(r => [r, r]));
+  const find = r => parent[r] === r ? r : (parent[r] = find(parent[r]));
+  const open = {};
+  (cfg.scenes[g + SEP + P.part] || []).forEach(t => {
+    if (t.enabled !== false) open[t.variableId] = t.value === openVal();
+  });
+  for (const w of P.walls) {
+    if (!open[w.variableId]) continue;
+    const [a, b] = w.rooms.map(find);
+    if (a === b) continue;
+    if (rooms.indexOf(a) < rooms.indexOf(b)) parent[b] = a; else parent[a] = b;
+  }
+  const members = {}, leaderOf = {}, hidden = new Set(), label = {};
+  rooms.forEach(r => (members[find(r)] = members[find(r)] || []).push(r));
+  for (const [lead, ms] of Object.entries(members)) {
+    ms.forEach(m => { leaderOf[m] = lead; if (m !== lead) hidden.add(m); });
+    if (ms.length > 1) label[lead] = joinNames(ms);
+  }
+  return { members, leaderOf, hidden, label };
+}
+// Teile einer Szene für die zweite Reihe: Trennwände ganz vorn, gekoppelte Räume ausgeblendet
+function partItems(g){
+  let parts = uniq(names.filter(n => part(n)[0] === g).map(n => part(n)[1]));
+  if (!P) return parts.map(r => ({key: r, label: r}));
+  parts.sort((a, b) => (b === P.part) - (a === P.part));
+  const grp = groupsFor(g);
+  return parts.filter(r => !grp.hidden.has(r)).map(r => ({key: r, label: grp.label[r] || r}));
+}
+// Szene g, Teil r wählen; ein ausgeblendeter (gekoppelter) Raum führt zum führenden Raum
+function pick(g, r){
+  if (P) { const lead = groupsFor(g).leaderOf[r]; if (lead) r = lead; }
+  if (names.includes(g + SEP + r)) return select(g + SEP + r);
+  const first = partItems(g)[0];
+  select(first ? g + SEP + first.key : names.find(n => part(n)[0] === g));
 }
 
 function select(name){
   scene = name;
-  const [g, r] = split ? part(name) : [name, null];
-  $('chips').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.s === g));
-  $('chips2').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.s === r));
+  if (split) {
+    const [g, r] = part(name);
+    $('chips').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.s === g));
+    chipRow('chips2', partItems(g), r2 => pick(part(scene)[0], r2));
+    $('chips2').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.s === r));
+  } else {
+    $('chips').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.s === name));
+  }
   render();
 }
 
+function rowHtml(t, i){
+  const id = 'c'+i, dis = t.enabled === false ? ' dis' : '';
+  if (t.options && t.varType !== 0) {
+    const opts = t.options.map(o =>
+      `<option value="${o.value}" ${o.value==t.value?'selected':''}>${esc(o.name)}</option>`).join('');
+    return `<div class="row${dis}"><span class="lbl">${esc(t.label)}</span>
+      <select id="${id}" data-i="${i}">${opts}</select></div>`;
+  }
+  if (t.varType === 0) {
+    return `<div class="row${dis}"><span class="lbl">${esc(t.label)}</span>
+      <label class="sw"><input type="checkbox" id="${id}" data-i="${i}"
+      ${t.value?'checked':''}><i></i></label></div>`;
+  }
+  if (t.type === 'color') {
+    return `<div class="row${dis}"><span class="lbl">${esc(t.label)}</span>
+      <input type="color" id="${id}" data-i="${i}" value="${toHex(t.value)}"></div>`;
+  }
+  const min = t.min ?? 0, max = (typeof t.max === 'number' && t.max > min) ? t.max : 100;
+  const step = t.step || 1, sfx = t.suffix || '';
+  return `<div class="row${dis}" style="flex-wrap:wrap">
+    <span class="lbl" style="width:100%">${esc(t.label)}
+      <span class="val" style="float:right" id="${id}v">${t.value}${esc(sfx)}</span></span>
+    <input type="range" id="${id}" data-i="${i}" min="${min}" max="${max}"
+      step="${step}" value="${t.value}"
+      oninput="document.getElementById('${id}v').textContent=this.value+'${esc(sfx)}'"></div>`;
+}
+
+// Trennwände als Grundriss: Räume im Raster, Wände dazwischen zum Antippen
+function wallsHtml(list){
+  const g = part(scene)[0], grp = groupsFor(g);
+  const coupled = Object.keys(grp.members).filter(l => grp.members[l].length > 1);
+  const tint = name => coupled.indexOf(grp.leaderOf[name]);
+  const on = list.filter(isWall).every(t => t.enabled !== false);
+  const cols = Math.max(...P.rooms.map(r => r.col)) + 1, rows = Math.max(...P.rooms.map(r => r.row)) + 1;
+  const tpl = n => Array.from({length: n}, (_, k) => k ? '30px 1fr' : '1fr').join(' ');
+  let cells = '';
+  for (const r of P.rooms) {
+    const lead = grp.leaderOf[r.name], k = tint(r.name);
+    const sub = k < 0 ? 'einzeln' : (lead === r.name ? 'führt' : 'gekoppelt → ' + lead);
+    cells += `<div class="pr${k < 0 ? '' : ' cpl g' + (k % 4)}" style="grid-column:${2*r.col+1};grid-row:${2*r.row+1}">
+      <b>${esc(r.name)}</b><small>${esc(sub)}</small></div>`;
+  }
+  list.forEach((t, i) => {
+    const w = P.walls.find(x => x.variableId === t.variableId);
+    if (!w) return;
+    const [a, b] = w.rooms.map(n => P.rooms.find(r => r.name === n));
+    if (!a || !b) return;
+    const vert = a.row === b.row;
+    const col = vert ? 2*Math.min(a.col, b.col)+2 : 2*a.col+1, row = vert ? 2*a.row+1 : 2*Math.min(a.row, b.row)+2;
+    const open = on && t.value === openVal(), k = tint(a.name);
+    cells += `<button type="button" class="pw ${vert ? 'v' : 'h'} ${open ? 'open g' + (k % 4) : 'closed'}" data-i="${i}"
+      style="grid-column:${col};grid-row:${row}" title="${esc(t.label)}: ${open ? 'offen' : 'geschlossen'}"><span></span></button>`;
+  });
+  return `<div class="planwrap${on ? '' : ' off'}">
+    <div class="row"><span class="lbl">${esc(P.part)} mit dieser Szene setzen</span>
+      <label class="sw"><input type="checkbox" id="wallsOn" ${on ? 'checked' : ''}><i></i></label></div>
+    <div class="plan" style="grid-template-columns:${tpl(cols)};grid-template-rows:${tpl(rows)}">${cells}</div>
+    <div class="plan-hint">${on ? 'Wand antippen: offen ↔ geschlossen. Gekoppelte Räume stellt man über den führenden Raum ein. Übernehmen mit „Speichern“.'
+      : 'Diese Szene lässt die ' + esc(P.part) + ' unverändert.'}</div></div>`;
+}
+
 function render(){
-  $('targets').innerHTML = cfg.scenes[scene].map((t,i) => {
-    const id = 'c'+i;
-    if (t.options && t.varType !== 0) {
-      const opts = t.options.map(o =>
-        `<option value="${o.value}" ${o.value==t.value?'selected':''}>${o.name}</option>`).join('');
-      return `<div class="row"><span class="lbl">${t.label}</span>
-        <select id="${id}" data-i="${i}">${opts}</select></div>`;
-    }
-    if (t.varType === 0) {
-      return `<div class="row"><span class="lbl">${t.label}</span>
-        <label class="sw"><input type="checkbox" id="${id}" data-i="${i}"
-        ${t.value?'checked':''}><i></i></label></div>`;
-    }
-    if (t.type === 'color') {
-      return `<div class="row"><span class="lbl">${t.label}</span>
-        <input type="color" id="${id}" data-i="${i}" value="${toHex(t.value)}"></div>`;
-    }
-    const min = t.min ?? 0, max = (t.max && t.max > t.min) ? t.max : 100;
-    const step = t.step || 1, sfx = t.suffix || '';
-    return `<div class="row" style="flex-wrap:wrap">
-      <span class="lbl" style="width:100%">${t.label}
-        <span class="val" style="float:right" id="${id}v">${t.value}${sfx}</span></span>
-      <input type="range" id="${id}" data-i="${i}" min="${min}" max="${max}"
-        step="${step}" value="${t.value}"
-        oninput="document.getElementById('${id}v').textContent=this.value+'${sfx}'"></div>`;
-  }).join('');
+  const list = cfg.scenes[scene];
+  const walls = !!P && part(scene)[1] === P.part;
+  let note = '';
+  if (P && !walls) {
+    const grp = groupsFor(part(scene)[0]), r = part(scene)[1];
+    if (grp.label[r]) note = 'Gilt für ' + grp.label[r] + ': in dieser Szene über offene ' + P.part + ' gekoppelt.';
+  }
+  $('scope').textContent = note;
+  $('scope').hidden = !note;
+  $('targets').innerHTML = (walls ? wallsHtml(list) : '') + list.map((t, i) =>
+    walls && isWall(t) ? `<input type="checkbox" id="c${i}" hidden ${t.value ? 'checked' : ''}>` : rowHtml(t, i)).join('');
+  if (walls) {
+    document.querySelectorAll('.pw').forEach(b => b.onclick = () => {
+      if (!$('wallsOn').checked) return;
+      collect();
+      const t = list[+b.dataset.i];
+      t.value = t.value === openVal() ? !openVal() : openVal();
+      select(scene); // Grundriss + Raumreihe neu
+    });
+    $('wallsOn').onchange = e => {
+      collect();
+      list.forEach(t => { if (isWall(t)) t.enabled = e.target.checked; });
+      select(scene);
+    };
+  }
 }
 
 function collect(){
   const values = {};
   cfg.scenes[scene].forEach((t,i) => {
     const el = $('c'+i);
+    if (!el) return;
     let v;
     if (t.varType === 0) v = el.checked;
     else if (t.type === 'color') v = fromHex(el.value);
@@ -260,9 +397,12 @@ function collect(){
 }
 
 async function send(path, okText){
+  const values = collect(), list = cfg.scenes[scene];
+  const disabled = list.filter(t => t.enabled === false).map(t => t.variableId);
+  if (path === 'test') disabled.forEach(id => delete values[id]); // abgewählte Ziele nicht live schalten
   const r = await fetch(api(path), {method:'POST',
     headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({scene, values: collect()})});
+    body: JSON.stringify({scene, values, disabled})});
   const d = await r.json();
   $('msg').textContent = d.ok ? okText : 'Fehler: ' + (d.error || 'unbekannt');
   setTimeout(() => $('msg').textContent = '', 3000);
