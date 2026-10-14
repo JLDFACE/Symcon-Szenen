@@ -1,0 +1,45 @@
+{
+    "elements": [
+        {
+            "type": "ValidationTextBox",
+            "name": "HookName",
+            "caption": "WebHook-Name (Aufruf: http://<SymBox-IP>:3777/hook/<Name>)"
+        },
+        {
+            "type": "PasswordTextBox",
+            "name": "PIN",
+            "caption": "PIN für Basic-Auth (leer = ohne Anmeldung)"
+        },
+        {
+            "type": "List",
+            "name": "Plans",
+            "caption": "Szenen (je ein Ablaufplan)",
+            "rowCount": 10,
+            "add": true,
+            "delete": true,
+            "columns": [
+                {
+                    "caption": "Szene (leer = Name des Ablaufplans)",
+                    "name": "Scene",
+                    "width": "260px",
+                    "add": "",
+                    "edit": { "type": "ValidationTextBox" }
+                },
+                {
+                    "caption": "Ablaufplan",
+                    "name": "PlanID",
+                    "width": "400px",
+                    "add": 0,
+                    "edit": { "type": "SelectScript" }
+                }
+            ]
+        }
+    ],
+    "actions": [
+        {
+            "type": "Label",
+            "caption": "Der Kunde bearbeitet unter /hook/<Name> die Wert-Aktionen der Ablaufpläne. Speichern schreibt direkt in den Plan."
+        }
+    ],
+    "status": []
+}

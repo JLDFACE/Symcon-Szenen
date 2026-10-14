@@ -1,0 +1,11 @@
+{
+    "id": "{A6C2F0D4-9B71-4E2A-8F3D-5C1E7B9A2D40}",
+    "author": "FACE Communication-Equipment GmbH",
+    "name": "FACE SzenenEditor",
+    "title": "FACE SzenenEditor",
+    "description": "Kundenseitig editierbare Lichtszenen über lokale Web-UI (WebHook)",
+    "url": "https://github.com/JLDFACE/Symcon-Szenen",
+    "version": "0.1",
+    "build": 1,
+    "date": 0
+}

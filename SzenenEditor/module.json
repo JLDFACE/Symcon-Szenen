@@ -1,0 +1,11 @@
+{
+    "id": "{E3D8B5F2-1A47-4C69-9B0E-6F2A8C4D7E13}",
+    "name": "SzenenEditor",
+    "type": 3,
+    "vendor": "FACE",
+    "aliases": ["Szenen-Editor", "Lichtszenen Editor"],
+    "parentRequirements": [],
+    "childRequirements": [],
+    "implemented": [],
+    "prefix": "FSE"
+}
