@@ -367,10 +367,13 @@ class SzenenEditor extends IPSModule
         $var     = IPS_GetVariable($varID);
         $profile = $var['VariableCustomProfile'] !== '' ? $var['VariableCustomProfile'] : $var['VariableProfile'];
 
-        // Label: Name der Variable, bei generischem "Value" der des Geräts
-        $label = IPS_GetName($varID);
-        if (strcasecmp($label, 'Value') === 0) {
-            $label = IPS_GetName(IPS_GetParent($varID));
+        // Label: Beschreibung der Variable (Objekt-Info), sonst ihr Name, bei generischem "Value" der des Geräts
+        $label = trim(IPS_GetObject($varID)['ObjectInfo']);
+        if ($label === '') {
+            $label = IPS_GetName($varID);
+            if (strcasecmp($label, 'Value') === 0) {
+                $label = IPS_GetName(IPS_GetParent($varID));
+            }
         }
 
         $target = [
