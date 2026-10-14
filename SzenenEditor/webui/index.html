@@ -73,14 +73,20 @@ main { max-width:560px; margin:0 auto; padding:18px 16px 28px; }
 /* ---- Szenen-Chips ---- */
 .section-title { font-size:11px; text-transform:uppercase; letter-spacing:.1em;
   color:var(--mut); margin:10px 0 12px; font-weight:700; }
-.chips { display:flex; gap:8px; overflow-x:auto; padding-bottom:12px; scrollbar-width:none; }
+.chips { display:flex; flex-wrap:wrap; gap:8px; padding-bottom:12px; }
 .chips::-webkit-scrollbar { display:none; }
 .chip { border:1px solid var(--line); background:var(--card); color:var(--txt); border-radius:999px;
   padding:8px 16px; font-size:14px; white-space:nowrap; cursor:pointer; box-shadow:var(--shadow); }
 .chip.on { background:var(--acc); border-color:var(--acc); color:var(--acc-ink); font-weight:700; }
 [hidden] { display:none !important; }
 .scope { font-size:13px; color:var(--txt); margin:0 0 10px; }
-.row.dis { opacity:.45; }
+label.lbl.tg { display:flex; align-items:center; gap:10px; cursor:pointer; min-width:0; }
+.en { width:20px; height:20px; margin:0; flex:none; accent-color:var(--acc); cursor:pointer; }
+.lblrow { width:100%; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.row.dis .t, .row.dis .val, .row.dis select, .row.dis .sw, .row.dis input[type=range],
+.row.dis input[type=color] { opacity:.4; }
+.row.head { border-bottom:1.5px solid var(--line); }
+.row.head b { color:var(--fg); }
 
 /* ---- Raumteilung: Trennwände als Grundriss ---- */
 .plan { display:grid; aspect-ratio:1.3; margin:4px 0 2px; }
@@ -220,7 +226,6 @@ async function load(){
   if (split) {
     chipRow('chips', uniq(names.map(n => part(n)[0])).map(g => ({key: g, label: g})), g => pick(g, part(scene)[1]));
     $('chips2').hidden = $('chips2Title').hidden = false;
-    if (P) $('chips2Title').textContent = P.part + ' und Räume';
     if (names.length) pick(part(names[0])[0], P ? P.part : part(names[0])[1]);
   } else {
     chipRow('chips', names.map(n => ({key: n, label: n})), select);
@@ -284,7 +289,9 @@ function select(name){
   if (split) {
     const [g, r] = part(name);
     $('chips').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.s === g));
-    chipRow('chips2', partItems(g), r2 => pick(part(scene)[0], r2));
+    const items = partItems(g);
+    $('chips2Title').textContent = P && items.some(it => it.key === P.part) ? P.part + ' und Räume' : 'Bereich wählen';
+    chipRow('chips2', items, r2 => pick(part(scene)[0], r2));
     $('chips2').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.s === r));
   } else {
     $('chips').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.s === name));
@@ -292,31 +299,45 @@ function select(name){
   render();
 }
 
+// Ziel-Zeile. Haken = Ziel gehört zur Szene; ohne Haken wird es beim Speichern geparkt und nicht geschaltet.
 function rowHtml(t, i){
-  const id = 'c'+i, dis = t.enabled === false ? ' dis' : '';
+  const id = 'c'+i, on = t.enabled !== false, dis = on ? '' : ' dis', off = on ? '' : ' disabled';
+  const lbl = `<label class="lbl tg"><input type="checkbox" class="en" data-i="${i}" ${on ? 'checked' : ''}
+    title="in dieser Szene schalten"><span class="t">${esc(t.label)}</span></label>`;
   if (t.options && t.varType !== 0) {
     const opts = t.options.map(o =>
       `<option value="${o.value}" ${o.value==t.value?'selected':''}>${esc(o.name)}</option>`).join('');
-    return `<div class="row${dis}"><span class="lbl">${esc(t.label)}</span>
-      <select id="${id}" data-i="${i}">${opts}</select></div>`;
+    return `<div class="row${dis}">${lbl}
+      <select id="${id}" data-i="${i}"${off}>${opts}</select></div>`;
   }
   if (t.varType === 0) {
-    return `<div class="row${dis}"><span class="lbl">${esc(t.label)}</span>
+    return `<div class="row${dis}">${lbl}
       <label class="sw"><input type="checkbox" id="${id}" data-i="${i}"
-      ${t.value?'checked':''}><i></i></label></div>`;
+      ${t.value?'checked':''}${off}><i></i></label></div>`;
   }
   if (t.type === 'color') {
-    return `<div class="row${dis}"><span class="lbl">${esc(t.label)}</span>
-      <input type="color" id="${id}" data-i="${i}" value="${toHex(t.value)}"></div>`;
+    return `<div class="row${dis}">${lbl}
+      <input type="color" id="${id}" data-i="${i}" value="${toHex(t.value)}"${off}></div>`;
   }
   const min = t.min ?? 0, max = (typeof t.max === 'number' && t.max > min) ? t.max : 100;
   const step = t.step || 1, sfx = t.suffix || '';
   return `<div class="row${dis}" style="flex-wrap:wrap">
-    <span class="lbl" style="width:100%">${esc(t.label)}
-      <span class="val" style="float:right" id="${id}v">${t.value}${esc(sfx)}</span></span>
+    <div class="lblrow">${lbl}<span class="val" id="${id}v">${t.value}${esc(sfx)}</span></div>
     <input type="range" id="${id}" data-i="${i}" min="${min}" max="${max}"
-      step="${step}" value="${t.value}"
+      step="${step}" value="${t.value}"${off}
       oninput="document.getElementById('${id}v').textContent=this.value+'${esc(sfx)}'"></div>`;
+}
+
+// Kopfzeile eines Teils: alle Ziele auf einmal in die Szene nehmen bzw. herausnehmen
+function partHead(list){
+  let name = scene;
+  if (split) {
+    const [g, r] = part(scene);
+    name = (P && groupsFor(g).label[r]) || r;
+  }
+  const any = list.some(t => t.enabled !== false);
+  return `<div class="row head"><span class="lbl"><b>${esc(name)}</b>&nbsp;in dieser Szene schalten</span>
+    <label class="sw"><input type="checkbox" id="partOn" ${any ? 'checked' : ''}><i></i></label></div>`;
 }
 
 // Trennwände als Grundriss: Räume im Raster, Wände dazwischen zum Antippen
@@ -363,8 +384,20 @@ function render(){
   }
   $('scope').textContent = note;
   $('scope').hidden = !note;
-  $('targets').innerHTML = (walls ? wallsHtml(list) : '') + list.map((t, i) =>
+  const rowsHtml = list.map((t, i) =>
     walls && isWall(t) ? `<input type="checkbox" id="c${i}" hidden ${t.value ? 'checked' : ''}>` : rowHtml(t, i)).join('');
+  $('targets').innerHTML = (walls ? wallsHtml(list) : partHead(list)) + rowsHtml
+    + (!walls && list.length ? '<div class="plan-hint">Ohne Haken verändert die Szene das Ziel nicht. Übernehmen mit „Speichern“.</div>' : '');
+  document.querySelectorAll('.en').forEach(c => c.onchange = () => {
+    collect();
+    list[+c.dataset.i].enabled = c.checked;
+    select(scene);
+  });
+  if ($('partOn')) $('partOn').onchange = e => {
+    collect();
+    list.forEach(t => { t.enabled = e.target.checked; });
+    select(scene);
+  };
   if (walls) {
     document.querySelectorAll('.pw').forEach(b => b.onclick = () => {
       if (!$('wallsOn').checked) return;

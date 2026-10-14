@@ -41,4 +41,11 @@ Optional beschreibt die Eigenschaft **Partitions** (JSON) eine Raumteilung mit T
 - Schalter „Trennwände mit dieser Szene setzen“ aus: Die Wand-Aktionen werden aus dem Plan genommen (geparkt),
   die Szene lässt die Wände unverändert.
 
+## Ziele aus einer Szene nehmen
+
+Jede Ziel-Zeile hat einen Haken: ohne Haken wird die Aktion beim Speichern aus dem Ablaufplan genommen (geparkt)
+und die Szene verändert das Ziel nicht. Der Schalter „… in dieser Szene schalten“ oben nimmt alle Ziele eines Teils
+auf einmal heraus bzw. wieder hinein (z. B. „WC“ in einer Szene „Alles aus“). Geparkte Ziele bleiben sichtbar und
+lassen sich jederzeit zurückholen.
+
 Beschriftung der Ziele im Editor: die **Objekt-Info** der Variable, sonst ihr Name (bei „Value“ der Name des Geräts).
