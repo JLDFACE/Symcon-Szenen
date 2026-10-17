@@ -177,6 +177,7 @@ button.act.p:hover { background:var(--acc-hover); border-color:var(--acc-hover);
   <div class="scope" id="scope" hidden></div>
   <div class="card" id="targets"></div>
   <div class="btns">
+    <button class="act" id="current" title="Aktuelle Werte der Geräte in den Editor holen">Ist-Zustand</button>
     <button class="act" id="test">Testen</button>
     <button class="act p" id="save">Speichern</button>
   </div>
@@ -441,6 +442,16 @@ async function send(path, okText){
   setTimeout(() => $('msg').textContent = '', 3000);
 }
 
+// Ist-Zustand der Geräte in die Regler holen (SKUZ-Prinzip: einstellen, dann speichern)
+$('current').onclick = async () => {
+  const d = await (await fetch(api('current') + '?scene=' + encodeURIComponent(scene))).json();
+  if (d.ok) {
+    cfg.scenes[scene].forEach(t => { if (d.values[t.variableId] !== undefined) t.value = d.values[t.variableId]; });
+    select(scene);
+  }
+  $('msg').textContent = d.ok ? 'Ist-Zustand übernommen – mit „Speichern“ sichern' : 'Fehler beim Lesen';
+  setTimeout(() => $('msg').textContent = '', 3000);
+};
 $('test').onclick = () => send('test', 'Szene wird live angezeigt');
 $('save').onclick = () => send('save', 'Gespeichert');
 load();

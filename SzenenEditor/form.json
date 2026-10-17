@@ -40,6 +40,18 @@
             "caption": "Raumteilung (optional, JSON – siehe README)",
             "multiline": true,
             "width": "100%"
+        },
+        {
+            "type": "CheckBox",
+            "name": "VisuVariables",
+            "caption": "Speichermodus für die Visu (Variablen „Szene“ und „Speichermodus“ anlegen)"
+        },
+        {
+            "type": "NumberSpinner",
+            "name": "SaveModeTimeout",
+            "caption": "Speichermodus schaltet sich ab nach",
+            "suffix": "s",
+            "minimum": 0
         }
     ],
     "actions": [

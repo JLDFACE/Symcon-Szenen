@@ -6,6 +6,7 @@ IP-Symcon-Modul: kundenseitig editierbare Szenen über eine lokale Web-Oberfläc
 - Der Kunde bearbeitet die Werte unter `http://<SymBox>:3777/hook/<HookName>` (optional PIN per Basic-Auth),
   kann live testen und speichert direkt in den Ablaufplan. Einzelne Ziele lassen sich aus einer Szene nehmen.
 - Abruf aus Skripten: `FSE_CallScene($InstanzID, 'Szenenname');`
+- Ist-Zustand als Szene speichern: `FSE_SaveCurrent($InstanzID, 'Szenenname');`
 
 Konfiguration der Instanz: HookName, PIN, Liste „Szene → Ablaufplan“.
 
@@ -49,3 +50,23 @@ auf einmal heraus bzw. wieder hinein (z. B. „WC“ in einer Szene „Alles aus
 lassen sich jederzeit zurückholen.
 
 Beschriftung der Ziele im Editor: die **Objekt-Info** der Variable, sonst ihr Name (bei „Value“ der Name des Geräts).
+
+## Speichermodus (SKUZ-Prinzip)
+
+Der Kunde stellt das Licht in der Visu ein und speichert den Ist-Zustand in eine Szene – ohne Webseite.
+
+- Haken **„Speichermodus für die Visu“** legt zwei Variablen an:
+  - **Szene** (Integer, Profil `FSE.Scenes.<InstanzID>`, Werte 1…n in der Reihenfolge der Szenenliste). Antippen ruft die
+    Szene ab; die Variable zeigt die zuletzt abgerufene bzw. gespeicherte Szene (Rückmeldung für ValueButtons).
+  - **Speichermodus** (Bool). Ist er an, *speichert* ein Antippen der Szene den Ist-Zustand, statt sie abzurufen.
+    Danach geht er sofort aus, sonst nach „Speichermodus schaltet sich ab nach“ Sekunden (0 = nie).
+- In IPSView: Speichermodus als Gedrückthalten-Taste (longpressaction 31 auf die Variable, LONGPRESSVALUE `true`),
+  daneben eine gesperrte Anzeige; die Szenentasten als ValueButtons auf **Szene**.
+- Gespeichert werden die Ziele, die im Ablaufplan stehen; geparkte Ziele bleiben geparkt. Dimmer werden in Prozent
+  des Variablenprofils umgerechnet.
+- Im Web-Editor holt **„Ist-Zustand“** die aktuellen Werte in die Regler; „Speichern“ sichert sie.
+
+**Achtung:** Gespeichert wird, was Symcon kennt. KNX-Dimmer ohne Rückmeldung zeigen den zuletzt *gesendeten* Wert –
+wer am Wandtaster dimmt, landet nicht in der Szene.
+
+Erkannte Ablaufplan-Aktionen: „Auf Wert schalten“, „Auf Prozentwert dimmen“ und „Schalten“ (Bool mit Profil).

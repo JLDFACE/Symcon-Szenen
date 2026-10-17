@@ -9,6 +9,7 @@ class SzenenEditor extends IPSModule
     // Ablaufplan-Aktionen, die reine Wert-Zuweisungen sind
     private const ACTION_SET_VALUE = '{46B65CA6-3098-4982-9A6C-B89DADBB0A96}'; // "Auf Wert schalten" (VALUE)
     private const ACTION_DIM       = '{F25466DC-917D-4D81-979F-82494B559340}'; // "Auf Prozentwert dimmen" (PERCENT_VALUE)
+    private const ACTION_SWITCH    = '{FCE37F48-DA3F-45DD-AC77-71343792CC2D}'; // "Schalten" bei Bool mit Profil (VALUE)
 
     public function Create()
     {
@@ -26,6 +27,12 @@ class SzenenEditor extends IPSModule
         //   "walls": [{ "variableId": 12345, "rooms": ["Raum 1", "Raum 2"] }, ...] }
         $this->RegisterPropertyString('Partitions', '');
 
+        // Speichermodus wie im SKUZ: Variablen "Szene" + "Speichermodus" für die Visu.
+        // Im Speichermodus speichert ein Szenenaufruf den Ist-Zustand, statt die Szene abzurufen.
+        $this->RegisterPropertyBoolean('VisuVariables', false);
+        $this->RegisterPropertyInteger('SaveModeTimeout', 20);
+        $this->RegisterTimer('SaveModeReset', 0, 'IPS_RequestAction($_IPS[\'TARGET\'], \'SaveMode\', false);');
+
         // Vom Kunden aus der Szene genommene Aktionen: { "<Szene>": { "<varID>": <action-json> } }
         $this->RegisterAttributeString('DisabledActions', '{}');
     }
@@ -35,6 +42,10 @@ class SzenenEditor extends IPSModule
         // Instanz wird gelöscht -> Hook austragen (per TargetID, Properties sind hier ggf. weg)
         if (!IPS_InstanceExists($this->InstanceID)) {
             $this->UnregisterHookByTarget();
+            // Profil nur beim echten Löschen entfernen – Destroy() läuft auch bei jedem Modul-Update
+            if (IPS_VariableProfileExists($this->SceneProfile())) {
+                IPS_DeleteVariableProfile($this->SceneProfile());
+            }
         }
         parent::Destroy();
     }
@@ -42,6 +53,8 @@ class SzenenEditor extends IPSModule
     public function ApplyChanges()
     {
         parent::ApplyChanges();
+
+        $this->MaintainVisuVariables();
 
         if (IPS_GetKernelRunlevel() !== KR_READY) {
             $this->RegisterMessage(0, IPS_KERNELSTARTED);
@@ -68,7 +81,61 @@ class SzenenEditor extends IPSModule
             $this->SendDebug('CallScene', 'Kein Ablaufplan für ' . $SceneName, 0);
             return false;
         }
+        $this->ShowActiveScene($SceneName);
         return IPS_RunScript($planID);
+    }
+
+    /**
+     * Ist-Zustand in die Szene übernehmen (SKUZ-Prinzip: Licht einstellen, dann speichern).
+     * Liest die aktuellen Werte aller Ziele des Ablaufplans und schreibt sie zurück;
+     * geparkte (abgewählte) Ziele bleiben geparkt.
+     * FSE_SaveCurrent(12345, 'Kochen');
+     */
+    public function SaveCurrent(string $SceneName): bool
+    {
+        $planID = $this->GetPlanID($SceneName);
+        if ($planID === 0) {
+            $this->SendDebug('SaveCurrent', 'Kein Ablaufplan für ' . $SceneName, 0);
+            return false;
+        }
+        $stashAll = json_decode($this->ReadAttributeString('DisabledActions'), true);
+        $parked   = array_map('intval', array_keys($stashAll[$SceneName] ?? []));
+
+        $err = $this->SaveToPlan($SceneName, $this->CurrentValues($planID), $parked);
+        if ($err !== '') {
+            $this->SendDebug('SaveCurrent', $err, 0);
+            return false;
+        }
+        $this->ShowActiveScene($SceneName);
+        return true;
+    }
+
+    public function RequestAction($Ident, $Value)
+    {
+        switch ($Ident) {
+            case 'Scene':
+                $names = $this->SceneNames();
+                $name  = $names[(int)$Value - 1] ?? '';
+                if ($name === '') {
+                    throw new Exception('Unbekannte Szene ' . $Value);
+                }
+                if ($this->GetValue('SaveMode')) {
+                    $this->SaveCurrent($name);
+                    $this->RequestAction('SaveMode', false); // nach dem Speichern sofort wieder scharf = aus
+                } else {
+                    $this->CallScene($name);
+                }
+                break;
+
+            case 'SaveMode':
+                $this->SetValue('SaveMode', (bool)$Value);
+                $timeout = $this->ReadPropertyInteger('SaveModeTimeout');
+                $this->SetTimerInterval('SaveModeReset', $Value && $timeout > 0 ? $timeout * 1000 : 0);
+                break;
+
+            default:
+                throw new Exception('Ungültiger Ident ' . $Ident);
+        }
     }
 
     protected function ProcessHookData()
@@ -111,6 +178,14 @@ class SzenenEditor extends IPSModule
                 array_map('intval', (array)($body['disabled'] ?? []))
             );
             echo json_encode($err === '' ? ['ok' => true] : ['ok' => false, 'error' => $err]);
+            return;
+        }
+
+        if ($route === 'api/current' && $method === 'GET') {
+            // Ist-Werte der Ziele einer Szene, in Editor-Einheiten (Dimmer in %)
+            header('Content-Type: application/json; charset=utf-8');
+            $planID = $this->GetPlanID((string)($_GET['scene'] ?? ''));
+            echo json_encode(['ok' => $planID !== 0, 'values' => (object)$this->CurrentValues($planID)]);
             return;
         }
 
@@ -168,6 +243,98 @@ class SzenenEditor extends IPSModule
         return 0;
     }
 
+    /** Szenennamen in der Reihenfolge der Liste – Position + 1 = Wert der Variable "Szene". */
+    private function SceneNames(): array
+    {
+        $names = [];
+        foreach (json_decode($this->ReadPropertyString('Plans'), true) as $row) {
+            if (IPS_ScriptExists((int)$row['PlanID'])) {
+                $names[] = $row['Scene'] !== '' ? $row['Scene'] : IPS_GetName((int)$row['PlanID']);
+            }
+        }
+        return $names;
+    }
+
+    private function SceneProfile(): string
+    {
+        return 'FSE.Scenes.' . $this->InstanceID;
+    }
+
+    /** Visu-Variablen "Szene" und "Speichermodus" anlegen bzw. entfernen; Profil folgt der Szenenliste. */
+    private function MaintainVisuVariables(): void
+    {
+        $profile = $this->SceneProfile();
+        if (!$this->ReadPropertyBoolean('VisuVariables')) {
+            $this->SetTimerInterval('SaveModeReset', 0);
+            $this->UnregisterVariable('Scene');
+            $this->UnregisterVariable('SaveMode');
+            if (IPS_VariableProfileExists($profile)) {
+                IPS_DeleteVariableProfile($profile);
+            }
+            return;
+        }
+
+        if (!IPS_VariableProfileExists($profile)) {
+            IPS_CreateVariableProfile($profile, VARIABLETYPE_INTEGER);
+        }
+        foreach (IPS_GetVariableProfile($profile)['Associations'] as $a) {
+            IPS_SetVariableProfileAssociation($profile, $a['Value'], '', '', -1); // alte Einträge leeren
+        }
+        $names = $this->SceneNames();
+        IPS_SetVariableProfileValues($profile, 0, max(1, count($names)), 1);
+        foreach ($names as $i => $name) {
+            IPS_SetVariableProfileAssociation($profile, $i + 1, $name, '', -1);
+        }
+
+        $this->RegisterVariableInteger('Scene', 'Szene', $profile, 10);
+        $this->EnableAction('Scene');
+        $this->RegisterVariableBoolean('SaveMode', 'Speichermodus', '~Switch', 20);
+        $this->EnableAction('SaveMode');
+    }
+
+    /** Rückmeldung: aktive Szene in der Visu-Variable zeigen (falls vorhanden). */
+    private function ShowActiveScene(string $scene): void
+    {
+        if (!$this->ReadPropertyBoolean('VisuVariables') || @$this->GetIDForIdent('Scene') === false) {
+            return;
+        }
+        $pos = array_search($scene, $this->SceneNames(), true);
+        if ($pos !== false && $this->GetValue('Scene') !== $pos + 1) {
+            $this->SetValue('Scene', $pos + 1);
+        }
+    }
+
+    /** Ist-Werte aller eindeutigen Ziele eines Plans: { varID: Wert }, Dimmer als Prozent des Profilbereichs. */
+    private function CurrentValues(int $planID): array
+    {
+        $values = [];
+        foreach ($this->CollectPlanTargets($planID) as $varID => $info) {
+            if ($info['count'] !== 1) {
+                continue;
+            }
+            $value = GetValue($varID);
+            if ($info['actionID'] === self::ACTION_DIM) {
+                $value = $this->ToPercent($varID, (float)$value);
+            }
+            $values[(string)$varID] = $value;
+        }
+        return $values;
+    }
+
+    /** Variablenwert in Prozent umrechnen (wie die Aktion "Auf Prozentwert dimmen" es erwartet). */
+    private function ToPercent(int $varID, float $value): int
+    {
+        $var     = IPS_GetVariable($varID);
+        $profile = $var['VariableCustomProfile'] !== '' ? $var['VariableCustomProfile'] : $var['VariableProfile'];
+        if ($profile !== '' && IPS_VariableProfileExists($profile)) {
+            $p = IPS_GetVariableProfile($profile);
+            if ($p['MaxValue'] > $p['MinValue']) {
+                $value = ($value - $p['MinValue']) / ($p['MaxValue'] - $p['MinValue']) * 100;
+            }
+        }
+        return (int)round(max(0, min(100, $value)));
+    }
+
     /**
      * Wert-Aktionen aus einem Ablaufplan einsammeln (rekursiv durch Bedingungen).
      * Liefert { varID: { count, value, actionID } } — nur existierende Variablen.
@@ -214,7 +381,7 @@ class SzenenEditor extends IPSModule
     private function ValueActionInfo(array $a): ?array
     {
         $p = $a['parameters'] ?? [];
-        if ($a['actionID'] === self::ACTION_SET_VALUE && isset($p['TARGET'], $p['VALUE'])) {
+        if (in_array($a['actionID'], [self::ACTION_SET_VALUE, self::ACTION_SWITCH], true) && isset($p['TARGET'], $p['VALUE'])) {
             return ['target' => (int)$p['TARGET'], 'value' => $p['VALUE']];
         }
         if ($a['actionID'] === self::ACTION_DIM && isset($p['TARGET'], $p['PERCENT_VALUE'])) {

@@ -5,7 +5,7 @@
     "title": "FACE SzenenEditor",
     "description": "Kundenseitig editierbare Lichtszenen über lokale Web-UI (WebHook)",
     "url": "https://github.com/JLDFACE/Symcon-Szenen",
-    "version": "0.3",
-    "build": 3,
+    "version": "0.4",
+    "build": 4,
     "date": 0
 }
