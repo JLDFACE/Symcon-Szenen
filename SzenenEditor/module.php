@@ -10,6 +10,12 @@ class SzenenEditor extends IPSModule
     private const ACTION_SET_VALUE = '{46B65CA6-3098-4982-9A6C-B89DADBB0A96}'; // "Auf Wert schalten" (VALUE)
     private const ACTION_DIM       = '{F25466DC-917D-4D81-979F-82494B559340}'; // "Auf Prozentwert dimmen" (PERCENT_VALUE)
     private const ACTION_SWITCH    = '{FCE37F48-DA3F-45DD-AC77-71343792CC2D}'; // "Schalten" bei Bool mit Profil (VALUE)
+    // "Switch to Value" für Integer/Float mit Darstellung (z. B. Farbtemperatur) bzw. Farbe (~HexColor), je VALUE
+    private const ACTION_SET_VALUE_PRESENTATION = '{A4C53C8D-795E-403A-9EEC-CC0D71E89A20}';
+    private const ACTION_SET_COLOR              = '{07DEB4D2-D32C-4226-8371-E8CD1A507D99}';
+    private const VALUE_ACTIONS = [
+        self::ACTION_SET_VALUE, self::ACTION_SWITCH, self::ACTION_SET_VALUE_PRESENTATION, self::ACTION_SET_COLOR
+    ];
 
     public function Create()
     {
@@ -381,7 +387,7 @@ class SzenenEditor extends IPSModule
     private function ValueActionInfo(array $a): ?array
     {
         $p = $a['parameters'] ?? [];
-        if (in_array($a['actionID'], [self::ACTION_SET_VALUE, self::ACTION_SWITCH], true) && isset($p['TARGET'], $p['VALUE'])) {
+        if (in_array($a['actionID'], self::VALUE_ACTIONS, true) && isset($p['TARGET'], $p['VALUE'])) {
             return ['target' => (int)$p['TARGET'], 'value' => $p['VALUE']];
         }
         if ($a['actionID'] === self::ACTION_DIM && isset($p['TARGET'], $p['PERCENT_VALUE'])) {

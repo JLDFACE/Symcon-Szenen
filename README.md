@@ -69,4 +69,4 @@ Der Kunde stellt das Licht in der Visu ein und speichert den Ist-Zustand in eine
 **Achtung:** Gespeichert wird, was Symcon kennt. KNX-Dimmer ohne Rückmeldung zeigen den zuletzt *gesendeten* Wert –
 wer am Wandtaster dimmt, landet nicht in der Szene.
 
-Erkannte Ablaufplan-Aktionen: „Auf Wert schalten“, „Auf Prozentwert dimmen“ und „Schalten“ (Bool mit Profil).
+Erkannte Ablaufplan-Aktionen: „Auf Wert schalten“ (auch die Varianten für Darstellungen wie Farbtemperatur und für Farben), „Auf Prozentwert dimmen“ und „Schalten“ (Bool mit Profil).
